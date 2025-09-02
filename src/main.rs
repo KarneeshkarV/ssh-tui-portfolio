@@ -47,7 +47,9 @@ impl App {
     /// - <https://docs.rs/ratatui/latest/ratatui/widgets/index.html>
     /// - <https://github.com/ratatui/ratatui/tree/main/ratatui-widgets/examples>
     fn render(&mut self, frame: &mut Frame) {
-        self.text = TEXT1.to_string();
+        if self.text.is_empty() {
+            self.text = TEXT1.to_string();
+        }
         let title = Line::from("Karneeshkar V - SSH Portfolio")
             .bold()
             .green()

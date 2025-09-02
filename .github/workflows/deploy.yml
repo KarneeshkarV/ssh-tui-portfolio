@@ -1,0 +1,45 @@
+name: Deploy to Digital Ocean VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: Digital Ocean
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Deploy and restart SSH-TUI service
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USERNAME }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          passphrase: ${{ secrets.DO_SSH_PASSPHRASE }}
+          port: ${{ secrets.DO_PORT }}
+          source: "target/release/ssh-tui"
+          target: "/opt/ssh-tui/"
+          script: |
+            set -e
+            mkdir -p /opt/ssh-tui
+            chmod +x /opt/ssh-tui/ssh-tui
+            sudo systemctl daemon-reload
+            sudo systemctl restart ssh-tui
+
