@@ -1,11 +1,13 @@
 use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::prelude::*;
 use ratatui::{
     DefaultTerminal, Frame,
     style::Stylize,
     text::Line,
     widgets::{Block, Paragraph},
 };
+use tui_big_text::{BigText, PixelSize};
 
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
@@ -61,6 +63,18 @@ impl App {
             Press `Esc`, `Ctrl-C` or `q` to stop running.",
             self.text
         );
+        let big_text = BigText::builder()
+            .pixel_size(PixelSize::Full)
+            .style(Style::new().blue())
+            .lines(vec![
+                "In".red().into(),
+                "Progress".white().into(),
+                "Wait for it".green().into(),
+                "~~~~~".into(),
+            ])
+            .build();
+
+        frame.render_widget(big_text, frame.area());
         frame.render_widget(
             Paragraph::new(text)
                 .block(Block::bordered().title(title))
