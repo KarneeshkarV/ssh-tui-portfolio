@@ -8,20 +8,20 @@ use ratatui::{
     text::Line,
     widgets::{Block, Paragraph},
 };
-use tui_big_text::{BigText, PixelSize};
+use tui_big_text::BigText;
 mod screens;
 
 enum ScreenWidget {
+    Intro(screens::intro_screen::IntroScreenWidget),
     First(BigText<'static>),
-    Second(BigText<'static>),
     Third(screens::third_screen::SparkWidget),
 }
 
 impl ratatui::widgets::Widget for ScreenWidget {
     fn render(self, area: Rect, buf: &mut Buffer) {
         match self {
+            ScreenWidget::Intro(widget) => widget.render(area, buf),
             ScreenWidget::First(widget) => widget.render(area, buf),
-            ScreenWidget::Second(widget) => widget.render(area, buf),
             ScreenWidget::Third(widget) => widget.render(area, buf),
         }
     }
@@ -38,8 +38,8 @@ fn main() -> color_eyre::Result<()> {
 #[derive(Debug, Default, PartialEq)]
 enum State {
     #[default]
+    Intro,
     First,
-    Second,
     Third,
 }
 /// The main application which holds the state and logic of the application.
@@ -107,29 +107,35 @@ impl App {
             self.text
         );
 
-        let big_text = match self.screen {
+        let active_screen = match self.screen {
+            State::Intro => ScreenWidget::Intro(screens::intro_screen::intro_screen()),
             State::First => ScreenWidget::First(screens::first_screen::first_screen()),
-            State::Second => ScreenWidget::Second(screens::second_screen::second_screen()),
             State::Third => {
                 ScreenWidget::Third(screens::third_screen::third_screen_from(&self.spark_data))
             }
         };
-        let outer_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(100)].as_ref())
-            .split(frame.area());
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(outer_layout[0]);
-        frame.render_widget(big_text, layout[1]);
-        frame.render_widget(
-            Paragraph::new(text)
-                .block(Block::bordered().title(title))
-                .centered()
-                .red(),
-            layout[0],
-        )
+
+        // Intro screen takes full screen, other screens split in half
+        if self.screen == State::Intro {
+            frame.render_widget(active_screen, frame.area());
+        } else {
+            let outer_layout = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Percentage(100)].as_ref())
+                .split(frame.area());
+            let layout = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
+                .split(outer_layout[0]);
+            frame.render_widget(active_screen, layout[1]);
+            frame.render_widget(
+                Paragraph::new(text)
+                    .block(Block::bordered().title(title))
+                    .centered()
+                    .red(),
+                layout[0],
+            )
+        }
     }
 
     /// Reads the crossterm events and updates the state of [`App`].
@@ -162,17 +168,17 @@ impl App {
 
     fn next_screen(&mut self) {
         self.screen = match self.screen {
-            State::First => State::Second,
-            State::Second => State::Third,
+            State::Intro => State::First,
+            State::First => State::Third,
             State::Third => State::First,
         };
     }
 
     fn previous_screen(&mut self) {
         self.screen = match self.screen {
-            State::First => State::Third,
-            State::Second => State::First,
-            State::Third => State::Second,
+            State::Intro => State::Third,
+            State::First => State::Intro,
+            State::Third => State::First,
         };
     }
     /// Set running to false to quit the application.
