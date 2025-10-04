@@ -7,16 +7,7 @@ use ratatui::{
 };
 use tui_big_text::{BigText, PixelSize};
 
-const BG_CANVAS: Color = Color::Rgb(9, 13, 22);
-const BG_HERO: Color = Color::Rgb(17, 24, 36);
-const BG_SECTION: Color = Color::Rgb(12, 19, 30);
-const BG_PANEL: Color = Color::Rgb(18, 26, 38);
-const BG_FOOTER: Color = Color::Rgb(8, 12, 20);
-
-const ACCENT_TEAL: Color = Color::Rgb(56, 217, 169);
-const ACCENT_BLUE: Color = Color::Rgb(92, 184, 246);
-const ACCENT_VIOLET: Color = Color::Rgb(186, 154, 255);
-const ACCENT_GOLD: Color = Color::Rgb(230, 190, 92);
+use super::theme::*;
 
 /// Composite intro view that fills the terminal with hero text, description, and controls.
 pub struct IntroScreenWidget;

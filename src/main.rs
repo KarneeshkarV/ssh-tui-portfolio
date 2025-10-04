@@ -1,19 +1,13 @@
 use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use rand::distr::{Distribution, Uniform};
-use ratatui::prelude::*;
-use ratatui::{
-    DefaultTerminal, Frame,
-    style::Stylize,
-    text::Line,
-    widgets::{Block, Paragraph},
-};
-use tui_big_text::BigText;
+use ratatui::{DefaultTerminal, Frame, prelude::*};
 mod screens;
 
 enum ScreenWidget {
     Intro(screens::intro_screen::IntroScreenWidget),
-    First(BigText<'static>),
+    First(screens::first_screen::FirstScreenWidget),
+    Second(screens::second_screen::SecondScreenWidget),
     Third(screens::third_screen::SparkWidget),
 }
 
@@ -22,6 +16,7 @@ impl ratatui::widgets::Widget for ScreenWidget {
         match self {
             ScreenWidget::Intro(widget) => widget.render(area, buf),
             ScreenWidget::First(widget) => widget.render(area, buf),
+            ScreenWidget::Second(widget) => widget.render(area, buf),
             ScreenWidget::Third(widget) => widget.render(area, buf),
         }
     }
@@ -40,6 +35,7 @@ enum State {
     #[default]
     Intro,
     First,
+    Second,
     Third,
 }
 /// The main application which holds the state and logic of the application.
@@ -47,13 +43,13 @@ enum State {
 pub struct App {
     /// Is the application running?
     running: bool,
-    text: String,
+    call_sign: String,
     screen: State,
     /// Data for third screen sparklines
     spark_data: [Vec<u64>; 3],
 }
-const TEXT1: &str = "Karneeshkar V";
-const TEXT2: &str = "Veera";
+const PRIMARY_CALL_SIGN: &str = "Karneeshkar V";
+const SECONDARY_CALL_SIGN: &str = "Veera";
 impl App {
     pub fn new() -> Self {
         let mut app = Self::default();
@@ -65,6 +61,7 @@ impl App {
             (0..100).map(|_| dist.sample(&mut rng)).collect(),
             (0..100).map(|_| dist.sample(&mut rng)).collect(),
         ];
+        app.call_sign = PRIMARY_CALL_SIGN.to_string();
         app
     }
 
@@ -91,51 +88,24 @@ impl App {
     /// - <https://docs.rs/ratatui/latest/ratatui/widgets/index.html>
     /// - <https://github.com/ratatui/ratatui/tree/main/ratatui-widgets/examples>
     fn render(&mut self, frame: &mut Frame) {
-        if self.text.is_empty() {
-            self.text = TEXT1.to_string();
+        if self.call_sign.is_empty() {
+            self.call_sign = PRIMARY_CALL_SIGN.to_string();
         }
-        let title = Line::from("Karneeshkar V - SSH Portfolio")
-            .bold()
-            .green()
-            .centered();
-        let text = format!(
-            "Hello, Hey!\n\n\
-            My name is {}\n\n\
-            Press [ or ] to change the text.\n\n\
-            Press p or n to change the Bottom Layout.\n\n\
-             Press `Esc`, `Ctrl-C` or `q` to stop running.",
-            self.text
-        );
 
-        let active_screen = match self.screen {
+        let widget = match self.screen {
             State::Intro => ScreenWidget::Intro(screens::intro_screen::intro_screen()),
-            State::First => ScreenWidget::First(screens::first_screen::first_screen()),
+            State::First => {
+                ScreenWidget::First(screens::first_screen::first_screen(&self.call_sign))
+            }
+            State::Second => {
+                ScreenWidget::Second(screens::second_screen::second_screen(&self.call_sign))
+            }
             State::Third => {
                 ScreenWidget::Third(screens::third_screen::third_screen_from(&self.spark_data))
             }
         };
 
-        // Intro screen takes full screen, other screens split in half
-        if self.screen == State::Intro {
-            frame.render_widget(active_screen, frame.area());
-        } else {
-            let outer_layout = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Percentage(100)].as_ref())
-                .split(frame.area());
-            let layout = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
-                .split(outer_layout[0]);
-            frame.render_widget(active_screen, layout[1]);
-            frame.render_widget(
-                Paragraph::new(text)
-                    .block(Block::bordered().title(title))
-                    .centered()
-                    .red(),
-                layout[0],
-            )
-        }
+        frame.render_widget(widget, frame.area());
     }
 
     /// Reads the crossterm events and updates the state of [`App`].
@@ -158,8 +128,8 @@ impl App {
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc | KeyCode::Char('q'))
             | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => self.quit(),
-            (_, KeyCode::Char('[')) => self.text = TEXT1.to_string(),
-            (_, KeyCode::Char(']')) => self.text = TEXT2.to_string(),
+            (_, KeyCode::Char('[')) => self.set_call_sign(PRIMARY_CALL_SIGN),
+            (_, KeyCode::Char(']')) => self.set_call_sign(SECONDARY_CALL_SIGN),
             (_, KeyCode::Char('n')) => self.next_screen(),
             (_, KeyCode::Char('p')) => self.previous_screen(),
             _ => {}
@@ -169,7 +139,8 @@ impl App {
     fn next_screen(&mut self) {
         self.screen = match self.screen {
             State::Intro => State::First,
-            State::First => State::Third,
+            State::First => State::Second,
+            State::Second => State::Third,
             State::Third => State::First,
         };
     }
@@ -178,12 +149,17 @@ impl App {
         self.screen = match self.screen {
             State::Intro => State::Third,
             State::First => State::Intro,
-            State::Third => State::First,
+            State::Second => State::First,
+            State::Third => State::Second,
         };
     }
     /// Set running to false to quit the application.
     fn quit(&mut self) {
         self.running = false;
+    }
+
+    fn set_call_sign(&mut self, next: &str) {
+        self.call_sign = next.to_string();
     }
 
     /// Periodic tick to update dynamic data (e.g., sparklines)
