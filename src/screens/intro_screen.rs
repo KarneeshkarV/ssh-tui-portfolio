@@ -1,7 +1,7 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Margin},
     prelude::*,
-    style::Stylize,
+    style::{Color, Stylize},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph, Wrap},
 };
@@ -10,10 +10,60 @@ use tui_big_text::{BigText, PixelSize};
 use super::theme::*;
 
 /// Composite intro view that fills the terminal with hero text, description, and controls.
-pub struct IntroScreenWidget;
+#[derive(Copy, Clone)]
+pub struct AsciiFrame {
+    pub label: &'static str,
+    pub art: &'static [&'static str],
+    pub tagline: &'static str,
+    pub accent: Color,
+}
 
-pub fn intro_screen() -> IntroScreenWidget {
-    IntroScreenWidget
+pub const ASCII_FRAMES: [AsciiFrame; 2] = [
+    AsciiFrame {
+        label: "Neovim",
+        art: &[
+            "        ,l;             c,      ",
+            "    .:ooool'           loo:.   ",
+            "  .,oooooooo:.         looooc, ",
+            " ll:,loooooool,        looooool",
+            " llll,;ooooooooc.      looooooo",
+            " lllllc,coooooooo;     looooooo",
+            " lllllll;,loooooool'   looooooo",
+            " lllllllc .:oooooooo:. looooooo",
+            " lllllllc   'loooooool,:ooooooo",
+            " lllllllc     ;ooooooooc,cooooo",
+            " lllllllc      .coooooooo;;looo",
+            " lllllllc        ,loooooool,:ol",
+            "  'cllllc         .:oooooooo;. ",
+            "    .;llc           .loooo:.   ",
+            "       ,;             ;l;      ",
+        ],
+        tagline: "Modal editing keeps the flow alive.",
+        accent: ACCENT_TEAL,
+    },
+    AsciiFrame {
+        label: "Linux",
+        art: &[
+            "       .--.          ",
+            "      |o_o |         ",
+            "      |:_/ |         ",
+            "     //   \\ \\       ",
+            "    (|     | )       ",
+            "   /'\\_   _/`\\      ",
+            "   \\___)=(___/      ",
+            "  Powered by Linux   ",
+        ],
+        tagline: "Freedom-driven systems tinkering.",
+        accent: ACCENT_GOLD,
+    },
+];
+
+pub struct IntroScreenWidget {
+    frame: AsciiFrame,
+}
+
+pub fn intro_screen(frame: AsciiFrame) -> IntroScreenWidget {
+    IntroScreenWidget { frame }
 }
 
 impl Widget for IntroScreenWidget {
@@ -57,9 +107,11 @@ impl Widget for IntroScreenWidget {
             .build();
         hero_text.render(hero_chunks[0], buf);
 
+        let frame = self.frame;
+
         let about_lines = vec![
             Line::from(Span::styled(
-                "Developer detated to crafting elegent solution, automation, and systems software.",
+                "Developer dedicated to crafting elegant solutions, automation, and systems software.",
                 Style::new().fg(Color::Rgb(189, 198, 216)).bold(),
             )),
             Line::from(Span::styled(
@@ -84,7 +136,46 @@ impl Widget for IntroScreenWidget {
                     .style(Style::new().bg(BG_PANEL)),
             )
             .wrap(Wrap { trim: true });
-        about.render(hero_chunks[1], buf);
+        let ascii_panel_height = if hero_chunks[1].height > 6 {
+            (frame.art.len() as u16 + 3).min(hero_chunks[1].height - 6)
+        } else {
+            hero_chunks[1].height / 2
+        };
+
+        let hero_detail_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0), Constraint::Length(ascii_panel_height)])
+            .split(hero_chunks[1]);
+
+        about.render(hero_detail_chunks[0], buf);
+
+        let mut ascii_lines: Vec<Line> = frame
+            .art
+            .iter()
+            .map(|line| Line::from(Span::styled(*line, Style::new().fg(frame.accent).bold())))
+            .collect();
+        ascii_lines.push(Line::from(Span::raw("")));
+        ascii_lines.push(Line::from(Span::styled(
+            frame.tagline,
+            Style::new().fg(FG_SECONDARY).italic(),
+        )));
+
+        let ascii_panel = Paragraph::new(ascii_lines)
+            .alignment(Alignment::Center)
+            .block(
+                Block::default()
+                    .title(Span::styled(
+                        frame.label,
+                        Style::new().fg(frame.accent).bold(),
+                    ))
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .style(Style::new().bg(BG_PANEL)),
+            )
+            .wrap(Wrap { trim: false });
+        if hero_detail_chunks[1].height > 0 {
+            ascii_panel.render(hero_detail_chunks[1], buf);
+        }
 
         // Highlight cards to showcase focus areas and stack.
         let highlights = Layout::default()
@@ -105,7 +196,7 @@ impl Widget for IntroScreenWidget {
                 Style::new().fg(ACCENT_BLUE),
             )),
             Line::from(Span::styled(
-                "• Embeeded Systems",
+                "• Embedded Systems",
                 Style::new().fg(ACCENT_VIOLET),
             )),
             Line::from(Span::styled(
@@ -138,7 +229,7 @@ impl Widget for IntroScreenWidget {
         .alignment(Alignment::Left);
         focus.render(highlights[0], buf);
 
-        let stack = Paragraph::new(vec![
+        let toolbox_lines = vec![
             Line::from(Span::styled(
                 "• Rust | Go | C++ | Python",
                 Style::new().fg(Color::Rgb(214, 221, 237)),
@@ -159,14 +250,21 @@ impl Widget for IntroScreenWidget {
                 "• AWS | GCP | Digital Ocean",
                 Style::new().fg(Color::Rgb(214, 221, 237)),
             )),
-        ])
-        .block(
-            Block::default()
-                .title(Span::styled("Toolbox", Style::new().fg(ACCENT_BLUE).bold()))
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .style(Style::new().bg(BG_PANEL)),
-        );
+        ];
+
+        let stack = Paragraph::new(toolbox_lines)
+            .alignment(Alignment::Center)
+            .block(
+                Block::default()
+                    .title(Span::styled(
+                        format!("Toolbox ",),
+                        Style::new().fg(frame.accent).bold(),
+                    ))
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .style(Style::new().bg(BG_PANEL)),
+            )
+            .wrap(Wrap { trim: false });
         stack.render(highlights[1], buf);
 
         let contact = Paragraph::new(vec![

@@ -3,6 +3,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use rand::distr::{Distribution, Uniform};
 use ratatui::{DefaultTerminal, Frame, prelude::*};
 mod screens;
+use screens::intro_screen::ASCII_FRAMES;
 
 enum ScreenWidget {
     Intro(screens::intro_screen::IntroScreenWidget),
@@ -47,6 +48,10 @@ pub struct App {
     screen: State,
     /// Data for third screen sparklines
     spark_data: [Vec<u64>; 3],
+    /// Current frame index for intro ASCII animation
+    intro_frame_index: usize,
+    /// Tick accumulator to pace intro animation
+    intro_tick: u8,
 }
 const PRIMARY_CALL_SIGN: &str = "Karneeshkar V";
 const SECONDARY_CALL_SIGN: &str = "Veera";
@@ -93,7 +98,9 @@ impl App {
         }
 
         let widget = match self.screen {
-            State::Intro => ScreenWidget::Intro(screens::intro_screen::intro_screen()),
+            State::Intro => ScreenWidget::Intro(screens::intro_screen::intro_screen(
+                ASCII_FRAMES[self.intro_frame_index],
+            )),
             State::First => {
                 ScreenWidget::First(screens::first_screen::first_screen(&self.call_sign))
             }
@@ -165,6 +172,7 @@ impl App {
     /// Periodic tick to update dynamic data (e.g., sparklines)
     fn on_tick(&mut self) {
         self.update_spark_data();
+        self.update_intro_animation();
     }
 
     /// Append a new sample to each sparkline and keep a fixed history length
@@ -176,6 +184,25 @@ impl App {
             if series.len() > 100 {
                 series.remove(0);
             }
+        }
+    }
+
+    fn update_intro_animation(&mut self) {
+        let frame_count = ASCII_FRAMES.len();
+        if frame_count <= 1 {
+            return;
+        }
+
+        if self.screen != State::Intro {
+            self.intro_tick = 0;
+            self.intro_frame_index %= frame_count;
+            return;
+        }
+
+        self.intro_tick = self.intro_tick.saturating_add(1);
+        if self.intro_tick >= 4 {
+            self.intro_tick = 0;
+            self.intro_frame_index = (self.intro_frame_index + 1) % frame_count;
         }
     }
 }
