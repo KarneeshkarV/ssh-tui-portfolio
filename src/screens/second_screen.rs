@@ -50,7 +50,7 @@ impl Widget for SecondScreenWidget {
                 Style::new().fg(FG_PRIMARY),
             )),
             Line::from(Span::styled(
-                "Latest role: Embedded Systems Developer @ Visteon (Jan 2025 - Present).",
+                "Latest role: Tech Lead @ 2Cents Capital (July 2025 - Present).",
                 Style::new().fg(FG_SECONDARY),
             )),
         ])
@@ -75,6 +75,24 @@ impl Widget for SecondScreenWidget {
             .split(sections[1]);
 
         let experience_items = vec![
+            ListItem::new(vec![
+                Line::from(vec![
+                    Span::styled("2Cents Capital", Style::new().fg(ACCENT_GOLD).bold()),
+                    Span::styled(
+                        " · Tech Lead",
+                        Style::new().fg(FG_PRIMARY).bold(),
+                    ),
+                    Span::styled("  (July 2025 - Present)", Style::new().fg(FG_SECONDARY)),
+                ]),
+                Line::from(Span::styled(
+                    "Led and scaled cross-functional Mobile and AI teams (10+ engineers) to deliver high-impact features with 95% on-time release rate.",
+                    Style::new().fg(FG_PRIMARY),
+                )),
+                Line::from(Span::styled(
+                    "Published a fully responsive investment application on both iOS App Store and Google Play, achieving <0.5s cold-start time.",
+                    Style::new().fg(FG_SECONDARY),
+                )),
+            ]),
             ListItem::new(vec![
                 Line::from(vec![
                     Span::styled("Visteon", Style::new().fg(ACCENT_GOLD).bold()),
