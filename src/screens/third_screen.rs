@@ -10,13 +10,14 @@ use super::theme::*;
 
 pub struct SparkWidget {
     data: [Vec<u64>; 3],
+    page: usize,
+    total: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct SeriesStats {
     last: u64,
     max: u64,
-    min: u64,
     avg: f64,
     delta: i64,
 }
@@ -27,19 +28,14 @@ impl SeriesStats {
             return Self {
                 last: 0,
                 max: 0,
-                min: 0,
                 avg: 0.0,
                 delta: 0,
             };
         }
 
-        let mut min = series[0];
         let mut max = series[0];
         let mut sum = 0u64;
         for &value in series {
-            if value < min {
-                min = value;
-            }
             if value > max {
                 max = value;
             }
@@ -54,7 +50,6 @@ impl SeriesStats {
         Self {
             last,
             max,
-            min,
             avg,
             delta,
         }
@@ -107,7 +102,6 @@ impl ratatui::widgets::Widget for SparkWidget {
         buf.set_style(header_chunks[0], Style::new().bg(BG_HERO));
         buf.set_style(header_chunks[1], Style::new().bg(BG_SECTION));
         buf.set_style(sections[1], Style::new().bg(BG_SECTION));
-        buf.set_style(sections[2], Style::new().bg(BG_FOOTER));
 
         let data = self.data;
 
@@ -163,21 +157,25 @@ impl ratatui::widgets::Widget for SparkWidget {
         .block(
             Block::default()
                 .title(Span::styled(
-                    "Systems Pulse",
+                    "── Systems Pulse ──",
                     Style::new().fg(ACCENT_TEAL).bold(),
                 ))
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
+                .border_style(Style::new().fg(BORDER_DIM))
                 .style(Style::new().bg(BG_HERO)),
         )
         .wrap(Wrap { trim: true });
         header.render(header_chunks[0], buf);
 
+        // Metric cards with spacers between them
         let metrics_columns = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
                 Constraint::Percentage(33),
-                Constraint::Percentage(34),
+                Constraint::Length(1), // spacer
+                Constraint::Percentage(33),
+                Constraint::Length(1), // spacer
                 Constraint::Percentage(33),
             ])
             .split(header_chunks[1]);
@@ -186,7 +184,7 @@ impl ratatui::widgets::Widget for SparkWidget {
             (
                 format!("{}", total_samples),
                 "Active Samples",
-                "Points retained across all telemetry streams.",
+                "Points retained across all streams.",
                 ACCENT_TEAL,
             ),
             (
@@ -198,18 +196,20 @@ impl ratatui::widgets::Widget for SparkWidget {
             (
                 format!("{}", spread),
                 "Signal Spread",
-                "Range between min and max readings this session.",
+                "Range between min and max readings.",
                 ACCENT_GOLD,
             ),
         ];
 
-        for (column, (value, title, description, accent)) in
-            metrics_columns.iter().zip(metric_cards.iter())
+        let card_indices = [0usize, 2, 4]; // skip spacer columns
+        for (col_idx, (value, title, description, accent)) in
+            card_indices.iter().zip(metric_cards.iter())
         {
             let accent = *accent;
             let card = Paragraph::new(vec![
+                Line::from(Span::raw("")), // breathing room
                 Line::from(Span::styled(value.as_str(), Style::new().fg(accent).bold())),
-                Line::from(Span::styled(*title, Style::new().fg(FG_PRIMARY))),
+                Line::from(Span::styled(*title, Style::new().fg(FG_PRIMARY).bold())),
                 Line::from(Span::styled(*description, Style::new().fg(FG_MUTED))),
             ])
             .alignment(Alignment::Center)
@@ -217,18 +217,22 @@ impl ratatui::widgets::Widget for SparkWidget {
                 Block::default()
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
-                    .style(Style::new().bg(BG_PANEL)),
+                    .border_style(Style::new().fg(BORDER_DIM))
+                    .style(Style::new().bg(BG_CARD)),
             )
             .wrap(Wrap { trim: true });
-            card.render(*column, buf);
+            card.render(metrics_columns[*col_idx], buf);
         }
 
+        // Sparkline columns with spacers
         let spark_area = sections[1];
         let spark_columns = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
                 Constraint::Percentage(33),
-                Constraint::Percentage(34),
+                Constraint::Length(1), // spacer
+                Constraint::Percentage(33),
+                Constraint::Length(1), // spacer
                 Constraint::Percentage(33),
             ])
             .split(spark_area);
@@ -239,7 +243,8 @@ impl ratatui::widgets::Widget for SparkWidget {
             ("Signal Gamma", ACCENT_GOLD),
         ];
 
-        for (idx, column) in spark_columns.iter().enumerate() {
+        let spark_indices = [0usize, 2, 4];
+        for (idx, col_idx) in spark_indices.iter().enumerate() {
             let (label, accent) = series_meta[idx];
             let stats = series_stats[idx];
             let series = &data[idx];
@@ -252,27 +257,22 @@ impl ratatui::widgets::Widget for SparkWidget {
                 ]))
                 .title_bottom(Line::from(vec![
                     Span::styled(
-                        format!("now {:>3}", stats.last),
-                        Style::new().fg(FG_PRIMARY).bold(),
+                        format!(" now {:>3} ", stats.last),
+                        Style::new().fg(BG_CANVAS).bg(accent).bold(),
                     ),
-                    Span::raw("  "),
+                    Span::styled(" │ ", Style::new().fg(FG_DIM)),
                     Span::styled("avg", Style::new().fg(FG_MUTED)),
-                    Span::styled(format!(" {:>5.1}", stats.avg), Style::new().fg(FG_PRIMARY)),
-                    Span::raw("  "),
-                    Span::styled("min", Style::new().fg(FG_MUTED)),
-                    Span::styled(format!(" {:>3}", stats.min), Style::new().fg(FG_PRIMARY)),
-                    Span::raw("  "),
-                    Span::styled("max", Style::new().fg(FG_MUTED)),
-                    Span::styled(format!(" {:>3}", stats.max), Style::new().fg(FG_PRIMARY)),
-                    Span::raw("  "),
+                    Span::styled(format!(" {:.1}", stats.avg), Style::new().fg(FG_PRIMARY)),
+                    Span::styled(" │ ", Style::new().fg(FG_DIM)),
                     Span::styled("trend", Style::new().fg(FG_MUTED)),
                     Span::styled(
-                        format!(" {}{:>2}", stats.trend_symbol(), stats.trend_magnitude()),
+                        format!(" {}{}", stats.trend_symbol(), stats.trend_magnitude()),
                         Style::new().fg(accent).bold(),
                     ),
                 ]))
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
+                .border_style(Style::new().fg(BORDER_DIM))
                 .style(Style::new().bg(BG_PANEL));
 
             let sparkline = Sparkline::default()
@@ -281,39 +281,24 @@ impl ratatui::widgets::Widget for SparkWidget {
                 .max(stats.max.max(1))
                 .style(Style::new().fg(accent));
 
-            sparkline.render(*column, buf);
+            sparkline.render(spark_columns[*col_idx], buf);
         }
 
-        let footer = Paragraph::new(vec![
-            Line::from(vec![
-                Span::styled("p", Style::new().fg(ACCENT_GOLD).bold()),
-                Span::styled(" prev", Style::new().fg(FG_PRIMARY)),
-                Span::styled("  •  ", Style::new().fg(FG_SECONDARY)),
-                Span::styled("n", Style::new().fg(ACCENT_GOLD).bold()),
-                Span::styled(" next", Style::new().fg(FG_PRIMARY)),
-                Span::styled("  •  ", Style::new().fg(FG_SECONDARY)),
-                Span::styled("q", Style::new().fg(Color::Rgb(244, 105, 130)).bold()),
-                Span::styled(" quit", Style::new().fg(FG_PRIMARY)),
-            ]),
-            Line::from(Span::styled(
-                "Signals refresh every 200ms · data resets per launch.",
-                Style::new().fg(FG_MUTED).italic(),
-            )),
-        ])
-        .alignment(Alignment::Center)
-        .block(
-            Block::default()
-                .borders(Borders::TOP)
-                .border_type(BorderType::Rounded)
-                .style(Style::new().bg(BG_FOOTER)),
+        render_footer(
+            sections[2],
+            buf,
+            self.page,
+            self.total,
+            "Signals refresh every 200ms · data resets per launch.",
         );
-        footer.render(sections[2], buf);
     }
 }
 
 /// Build the spark widget from existing data (keeps animation state in App)
-pub fn third_screen_from(data: &[Vec<u64>; 3]) -> SparkWidget {
+pub fn third_screen_from(data: &[Vec<u64>; 3], page: usize, total: usize) -> SparkWidget {
     SparkWidget {
         data: [data[0].clone(), data[1].clone(), data[2].clone()],
+        page,
+        total,
     }
 }

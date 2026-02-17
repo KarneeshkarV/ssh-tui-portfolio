@@ -60,10 +60,12 @@ pub const ASCII_FRAMES: [AsciiFrame; 2] = [
 
 pub struct IntroScreenWidget {
     frame: AsciiFrame,
+    page: usize,
+    total: usize,
 }
 
-pub fn intro_screen(frame: AsciiFrame) -> IntroScreenWidget {
-    IntroScreenWidget { frame }
+pub fn intro_screen(frame: AsciiFrame, page: usize, total: usize) -> IntroScreenWidget {
+    IntroScreenWidget { frame, page, total }
 }
 
 impl Widget for IntroScreenWidget {
@@ -112,11 +114,11 @@ impl Widget for IntroScreenWidget {
         let about_lines = vec![
             Line::from(Span::styled(
                 "Developer dedicated to crafting elegant solutions, automation, and systems software.",
-                Style::new().fg(Color::Rgb(189, 198, 216)).bold(),
+                Style::new().fg(FG_PRIMARY).bold(),
             )),
             Line::from(Span::styled(
                 "I build accessible interfaces, automation tooling, and systems software.",
-                Style::new().fg(Color::Rgb(160, 175, 197)),
+                Style::new().fg(FG_SECONDARY),
             )),
             Line::from(Span::styled(
                 "Open to interesting collaborations and remote-first teams.",
@@ -128,23 +130,29 @@ impl Widget for IntroScreenWidget {
             .block(
                 Block::default()
                     .title(Span::styled(
-                        "About Me",
+                        "── About Me ──",
                         Style::new().fg(ACCENT_GOLD).bold(),
                     ))
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
+                    .border_style(Style::new().fg(BORDER_DIM))
                     .style(Style::new().bg(BG_PANEL)),
             )
             .wrap(Wrap { trim: true });
-        let ascii_panel_height = if hero_chunks[1].height > 6 {
-            (frame.art.len() as u16 + 3).min(hero_chunks[1].height - 6)
+
+        let ascii_panel_height = if hero_chunks[1].height > 7 {
+            (frame.art.len() as u16 + 3).min(hero_chunks[1].height - 7)
         } else {
             hero_chunks[1].height / 2
         };
 
         let hero_detail_chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0), Constraint::Length(ascii_panel_height)])
+            .constraints([
+                Constraint::Min(0),
+                Constraint::Length(1), // spacer
+                Constraint::Length(ascii_panel_height),
+            ])
             .split(hero_chunks[1]);
 
         about.render(hero_detail_chunks[0], buf);
@@ -170,19 +178,22 @@ impl Widget for IntroScreenWidget {
                     ))
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
+                    .border_style(Style::new().fg(BORDER_DIM))
                     .style(Style::new().bg(BG_PANEL)),
             )
             .wrap(Wrap { trim: false });
-        if hero_detail_chunks[1].height > 0 {
-            ascii_panel.render(hero_detail_chunks[1], buf);
+        if hero_detail_chunks[2].height > 0 {
+            ascii_panel.render(hero_detail_chunks[2], buf);
         }
 
-        // Highlight cards to showcase focus areas and stack.
+        // Highlight cards with spacers between them.
         let highlights = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Percentage(34),
                 Constraint::Percentage(33),
+                Constraint::Length(1), // spacer
+                Constraint::Percentage(33),
+                Constraint::Length(1), // spacer
                 Constraint::Percentage(33),
             ])
             .split(sections[1]);
@@ -190,40 +201,38 @@ impl Widget for IntroScreenWidget {
         buf.set_style(sections[1], Style::new().bg(BG_SECTION));
 
         let focus = Paragraph::new(vec![
-            Line::from(Span::styled("• AI agents", Style::new().fg(ACCENT_TEAL))),
+            Line::from(Span::styled("◆ AI agents", Style::new().fg(ACCENT_TEAL))),
             Line::from(Span::styled(
-                "• Native Applications",
+                "◆ Native Applications",
                 Style::new().fg(ACCENT_BLUE),
             )),
             Line::from(Span::styled(
-                "• Embedded Systems",
+                "◆ Embedded Systems",
                 Style::new().fg(ACCENT_VIOLET),
             )),
+            Line::from(Span::styled("◇ Terminal UX", Style::new().fg(FG_PRIMARY))),
             Line::from(Span::styled(
-                "• Terminal UX",
-                Style::new().fg(Color::Rgb(214, 221, 237)),
+                "◇ Cloud automation",
+                Style::new().fg(FG_PRIMARY),
             )),
             Line::from(Span::styled(
-                "• Cloud automation",
-                Style::new().fg(Color::Rgb(214, 221, 237)),
+                "◇ Developer tooling",
+                Style::new().fg(FG_PRIMARY),
             )),
             Line::from(Span::styled(
-                "• Developer tooling",
-                Style::new().fg(Color::Rgb(214, 221, 237)),
-            )),
-            Line::from(Span::styled(
-                "• And much more ",
-                Style::new().fg(Color::Rgb(185, 196, 215)),
+                "◇ And much more",
+                Style::new().fg(FG_SECONDARY),
             )),
         ])
         .block(
             Block::default()
                 .title(Span::styled(
-                    "Focus Areas",
+                    "── Focus Areas ──",
                     Style::new().fg(ACCENT_TEAL).bold(),
                 ))
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
+                .border_style(Style::new().fg(BORDER_DIM))
                 .style(Style::new().bg(BG_PANEL)),
         )
         .alignment(Alignment::Left);
@@ -231,24 +240,18 @@ impl Widget for IntroScreenWidget {
 
         let toolbox_lines = vec![
             Line::from(Span::styled(
-                "• Rust | Go | C++ | Python",
-                Style::new().fg(Color::Rgb(214, 221, 237)),
+                "◆ Rust | Go | C++ | Python",
+                Style::new().fg(FG_PRIMARY),
+            )),
+            Line::from(Span::styled("◆ NVIM", Style::new().fg(FG_PRIMARY))),
+            Line::from(Span::styled("◆ Linux", Style::new().fg(FG_PRIMARY))),
+            Line::from(Span::styled(
+                "◇ Terraform | Bash",
+                Style::new().fg(FG_SECONDARY),
             )),
             Line::from(Span::styled(
-                "• NVIM",
-                Style::new().fg(Color::Rgb(214, 221, 237)),
-            )),
-            Line::from(Span::styled(
-                "• Linux",
-                Style::new().fg(Color::Rgb(214, 221, 237)),
-            )),
-            Line::from(Span::styled(
-                "• Terraform | Bash",
-                Style::new().fg(Color::Rgb(214, 221, 237)),
-            )),
-            Line::from(Span::styled(
-                "• AWS | GCP | Digital Ocean",
-                Style::new().fg(Color::Rgb(214, 221, 237)),
+                "◇ AWS | GCP | Digital Ocean",
+                Style::new().fg(FG_SECONDARY),
             )),
         ];
 
@@ -257,69 +260,51 @@ impl Widget for IntroScreenWidget {
             .block(
                 Block::default()
                     .title(Span::styled(
-                        format!("Toolbox ",),
+                        "── Toolbox ──",
                         Style::new().fg(frame.accent).bold(),
                     ))
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
+                    .border_style(Style::new().fg(BORDER_DIM))
                     .style(Style::new().bg(BG_PANEL)),
             )
             .wrap(Wrap { trim: false });
-        stack.render(highlights[1], buf);
+        stack.render(highlights[2], buf);
 
         let contact = Paragraph::new(vec![
             Line::from(Span::styled(
-                "• github.com/KarneeshkarV",
+                "◆ github.com/KarneeshkarV",
                 Style::new().fg(ACCENT_TEAL),
             )),
             Line::from(Span::styled(
-                "• linkedin.com/in/karneeshkar-velmurugan/",
+                "◆ linkedin.com/in/karneeshkar-velmurugan/",
                 Style::new().fg(ACCENT_BLUE),
             )),
             Line::from(Span::styled(
-                "• karneeshkar68@gmail.com",
+                "◆ karneeshkar68@gmail.com",
                 Style::new().fg(ACCENT_VIOLET),
             )),
         ])
         .block(
             Block::default()
                 .title(Span::styled(
-                    "Connect",
+                    "── Connect ──",
                     Style::new().fg(ACCENT_VIOLET).bold(),
                 ))
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
+                .border_style(Style::new().fg(BORDER_DIM))
                 .style(Style::new().bg(BG_PANEL)),
         );
-        contact.render(highlights[2], buf);
+        contact.render(highlights[4], buf);
 
-        // Footer instructions for navigation.
-        buf.set_style(sections[2], Style::new().bg(BG_FOOTER));
-        let footer = Paragraph::new(vec![
-            Line::from(vec![
-                Span::styled("Press ", Style::new().fg(Color::Rgb(150, 163, 186))),
-                Span::styled("n", Style::new().fg(ACCENT_GOLD).bold()),
-                Span::styled(
-                    " to explore projects, ",
-                    Style::new().fg(Color::Rgb(150, 163, 186)),
-                ),
-                Span::styled("p", Style::new().fg(ACCENT_GOLD).bold()),
-                Span::styled(" to revisit, ", Style::new().fg(Color::Rgb(150, 163, 186))),
-                Span::styled("q", Style::new().fg(Color::Rgb(244, 105, 130)).bold()),
-                Span::styled(" to exit.", Style::new().fg(Color::Rgb(150, 163, 186))),
-            ]),
-            Line::from(Span::styled(
-                "Optimized for full-screen terminals.",
-                Style::new().fg(Color::Rgb(111, 123, 143)).italic(),
-            )),
-        ])
-        .alignment(Alignment::Center)
-        .block(
-            Block::default()
-                .borders(Borders::TOP)
-                .border_type(BorderType::Rounded)
-                .style(Style::new().bg(BG_FOOTER)),
+        // Standardized footer.
+        render_footer(
+            sections[2],
+            buf,
+            self.page,
+            self.total,
+            "Optimized for full-screen terminals.",
         );
-        footer.render(sections[2], buf);
     }
 }
