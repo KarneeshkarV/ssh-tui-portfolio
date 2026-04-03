@@ -52,6 +52,10 @@ pub struct App {
     intro_frame_index: usize,
     /// Tick accumulator to pace intro animation
     intro_tick: u8,
+    /// Global monotonic tick counter
+    global_tick: u64,
+    /// Tick value when the current screen was entered
+    screen_entered_tick: u64,
 }
 const PRIMARY_CALL_SIGN: &str = "Karneeshkar V";
 const SECONDARY_CALL_SIGN: &str = "Veera";
@@ -98,26 +102,48 @@ impl App {
         }
 
         let (page, total) = self.screen_index();
+        let screen_tick = self.screen_tick();
+        let global_tick = self.global_tick;
+
+        // 1-frame blank wipe on screen transition
+        if screen_tick == 0 {
+            let area = frame.area();
+            frame.buffer_mut().set_style(
+                area,
+                Style::new()
+                    .bg(screens::theme::BG_CANVAS)
+                    .fg(screens::theme::BG_CANVAS),
+            );
+            return;
+        }
+
         let widget = match self.screen {
             State::Intro => ScreenWidget::Intro(screens::intro_screen::intro_screen(
                 ASCII_FRAMES[self.intro_frame_index],
                 page,
                 total,
+                screen_tick,
+                global_tick,
             )),
             State::First => ScreenWidget::First(screens::first_screen::first_screen(
                 &self.call_sign,
                 page,
                 total,
+                screen_tick,
             )),
             State::Second => ScreenWidget::Second(screens::second_screen::second_screen(
                 &self.call_sign,
                 page,
                 total,
+                screen_tick,
+                global_tick,
             )),
             State::Third => ScreenWidget::Third(screens::third_screen::third_screen_from(
                 &self.spark_data,
                 page,
                 total,
+                screen_tick,
+                global_tick,
             )),
         };
 
@@ -159,6 +185,7 @@ impl App {
             State::Second => State::Third,
             State::Third => State::First,
         };
+        self.screen_entered_tick = self.global_tick;
     }
 
     fn previous_screen(&mut self) {
@@ -168,6 +195,7 @@ impl App {
             State::Second => State::First,
             State::Third => State::Second,
         };
+        self.screen_entered_tick = self.global_tick;
     }
     fn screen_index(&self) -> (usize, usize) {
         let page = match self.screen {
@@ -188,8 +216,14 @@ impl App {
         self.call_sign = next.to_string();
     }
 
+    /// How many ticks have elapsed since the current screen was entered.
+    fn screen_tick(&self) -> u64 {
+        self.global_tick.saturating_sub(self.screen_entered_tick)
+    }
+
     /// Periodic tick to update dynamic data (e.g., sparklines)
     fn on_tick(&mut self) {
+        self.global_tick = self.global_tick.wrapping_add(1);
         self.update_spark_data();
         self.update_intro_animation();
     }

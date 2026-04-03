@@ -12,6 +12,8 @@ pub struct SparkWidget {
     data: [Vec<u64>; 3],
     page: usize,
     total: usize,
+    screen_tick: u64,
+    global_tick: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -55,10 +57,24 @@ impl SeriesStats {
         }
     }
 
-    fn trend_symbol(&self) -> &'static str {
+    fn trend_symbol(&self, global_tick: u64) -> &'static str {
+        // Animated trend arrows — alternate every 3 ticks
+        let alt = global_tick % 6 < 3;
         match self.delta.cmp(&0) {
-            std::cmp::Ordering::Greater => "↑",
-            std::cmp::Ordering::Less => "↓",
+            std::cmp::Ordering::Greater => {
+                if alt {
+                    "↑"
+                } else {
+                    "⇡"
+                }
+            }
+            std::cmp::Ordering::Less => {
+                if alt {
+                    "↓"
+                } else {
+                    "⇣"
+                }
+            }
             std::cmp::Ordering::Equal => "→",
         }
     }
@@ -90,7 +106,7 @@ impl ratatui::widgets::Widget for SparkWidget {
             .constraints([
                 Constraint::Length(8),
                 Constraint::Min(9),
-                Constraint::Length(3),
+                Constraint::Length(5),
             ])
             .split(content);
 
@@ -143,11 +159,21 @@ impl ratatui::widgets::Widget for SparkWidget {
 
         let spread = if has_value { max_value - min_value } else { 0 };
 
+        // Pulsing LIVE indicator
+        let live_indicator = if self.global_tick % 6 < 4 {
+            Span::styled("● LIVE ", Style::new().fg(ACCENT_RED).bold())
+        } else {
+            Span::styled("○ LIVE ", Style::new().fg(FG_DIM))
+        };
+
         let header = Paragraph::new(vec![
-            Line::from(Span::styled(
-                "Operations Telemetry",
-                Style::new().fg(ACCENT_GOLD).bold(),
-            )),
+            Line::from(vec![
+                live_indicator,
+                Span::styled(
+                    "Operations Telemetry",
+                    Style::new().fg(ACCENT_GOLD).bold(),
+                ),
+            ]),
             Line::from(Span::styled(
                 "Live signal metrics refreshing every 200ms across three service clusters.",
                 Style::new().fg(FG_PRIMARY),
@@ -162,52 +188,62 @@ impl ratatui::widgets::Widget for SparkWidget {
                 ))
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .border_style(Style::new().fg(BORDER_DIM))
+                .border_style(Style::new().fg(BORDER_ACCENT))
                 .style(Style::new().bg(BG_HERO)),
         )
         .wrap(Wrap { trim: true });
         header.render(header_chunks[0], buf);
 
-        // Metric cards with spacers between them
+        // Metric cards with animated count-up
+        let reveal_factor = if self.screen_tick < 8 {
+            self.screen_tick as f64 / 8.0
+        } else {
+            1.0
+        };
+
+        let displayed_samples = (total_samples as f64 * reveal_factor) as usize;
+        let displayed_composite = composite_signal * reveal_factor;
+        let displayed_spread = (spread as f64 * reveal_factor) as u64;
+
         let metrics_columns = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
                 Constraint::Percentage(33),
-                Constraint::Length(1), // spacer
+                Constraint::Length(1),
                 Constraint::Percentage(33),
-                Constraint::Length(1), // spacer
+                Constraint::Length(1),
                 Constraint::Percentage(33),
             ])
             .split(header_chunks[1]);
 
         let metric_cards = [
             (
-                format!("{}", total_samples),
+                format!("{}", displayed_samples),
                 "Active Samples",
                 "Points retained across all streams.",
                 ACCENT_TEAL,
             ),
             (
-                format!("{:.1}%", composite_signal),
+                format!("{:.1}%", displayed_composite),
                 "Composite Signal",
                 "Latest blended health score (0-100).",
                 ACCENT_BLUE,
             ),
             (
-                format!("{}", spread),
+                format!("{}", displayed_spread),
                 "Signal Spread",
                 "Range between min and max readings.",
                 ACCENT_GOLD,
             ),
         ];
 
-        let card_indices = [0usize, 2, 4]; // skip spacer columns
+        let card_indices = [0usize, 2, 4];
         for (col_idx, (value, title, description, accent)) in
             card_indices.iter().zip(metric_cards.iter())
         {
             let accent = *accent;
             let card = Paragraph::new(vec![
-                Line::from(Span::raw("")), // breathing room
+                Line::from(Span::raw("")),
                 Line::from(Span::styled(value.as_str(), Style::new().fg(accent).bold())),
                 Line::from(Span::styled(*title, Style::new().fg(FG_PRIMARY).bold())),
                 Line::from(Span::styled(*description, Style::new().fg(FG_MUTED))),
@@ -224,15 +260,15 @@ impl ratatui::widgets::Widget for SparkWidget {
             card.render(metrics_columns[*col_idx], buf);
         }
 
-        // Sparkline columns with spacers
+        // Sparkline columns
         let spark_area = sections[1];
         let spark_columns = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
                 Constraint::Percentage(33),
-                Constraint::Length(1), // spacer
+                Constraint::Length(1),
                 Constraint::Percentage(33),
-                Constraint::Length(1), // spacer
+                Constraint::Length(1),
                 Constraint::Percentage(33),
             ])
             .split(spark_area);
@@ -248,6 +284,21 @@ impl ratatui::widgets::Widget for SparkWidget {
             let (label, accent) = series_meta[idx];
             let stats = series_stats[idx];
             let series = &data[idx];
+
+            let spark_col_area = spark_columns[*col_idx];
+
+            // Shade background: fill interior with ░ for "graph paper" effect
+            let inner_area = spark_col_area.inner(Margin {
+                horizontal: 1,
+                vertical: 1,
+            });
+            let shade_color = Color::Rgb(15, 20, 28);
+            for y in inner_area.y..inner_area.bottom() {
+                for x in inner_area.x..inner_area.right() {
+                    buf[(x, y)].set_char('░');
+                    buf[(x, y)].set_style(Style::new().fg(shade_color).bg(BG_PANEL));
+                }
+            }
 
             let block = Block::default()
                 .title(Line::from(vec![
@@ -266,13 +317,17 @@ impl ratatui::widgets::Widget for SparkWidget {
                     Span::styled(" │ ", Style::new().fg(FG_DIM)),
                     Span::styled("trend", Style::new().fg(FG_MUTED)),
                     Span::styled(
-                        format!(" {}{}", stats.trend_symbol(), stats.trend_magnitude()),
+                        format!(
+                            " {}{}",
+                            stats.trend_symbol(self.global_tick),
+                            stats.trend_magnitude()
+                        ),
                         Style::new().fg(accent).bold(),
                     ),
                 ]))
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .border_style(Style::new().fg(BORDER_DIM))
+                .border_style(Style::new().fg(pulsing_accent(BORDER_DIM, self.global_tick, 15)))
                 .style(Style::new().bg(BG_PANEL));
 
             let sparkline = Sparkline::default()
@@ -281,7 +336,7 @@ impl ratatui::widgets::Widget for SparkWidget {
                 .max(stats.max.max(1))
                 .style(Style::new().fg(accent));
 
-            sparkline.render(spark_columns[*col_idx], buf);
+            sparkline.render(spark_col_area, buf);
         }
 
         render_footer(
@@ -295,10 +350,18 @@ impl ratatui::widgets::Widget for SparkWidget {
 }
 
 /// Build the spark widget from existing data (keeps animation state in App)
-pub fn third_screen_from(data: &[Vec<u64>; 3], page: usize, total: usize) -> SparkWidget {
+pub fn third_screen_from(
+    data: &[Vec<u64>; 3],
+    page: usize,
+    total: usize,
+    screen_tick: u64,
+    global_tick: u64,
+) -> SparkWidget {
     SparkWidget {
         data: [data[0].clone(), data[1].clone(), data[2].clone()],
         page,
         total,
+        screen_tick,
+        global_tick,
     }
 }

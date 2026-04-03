@@ -3,7 +3,7 @@ use ratatui::{
     prelude::*,
     style::Stylize,
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, Padding, Paragraph, Wrap},
 };
 
 use super::theme::*;
@@ -12,13 +12,23 @@ pub struct SecondScreenWidget {
     call_sign: String,
     page: usize,
     total: usize,
+    screen_tick: u64,
+    global_tick: u64,
 }
 
-pub fn second_screen(call_sign: &str, page: usize, total: usize) -> SecondScreenWidget {
+pub fn second_screen(
+    call_sign: &str,
+    page: usize,
+    total: usize,
+    screen_tick: u64,
+    global_tick: u64,
+) -> SecondScreenWidget {
     SecondScreenWidget {
         call_sign: call_sign.to_string(),
         page,
         total,
+        screen_tick,
+        global_tick,
     }
 }
 
@@ -40,7 +50,7 @@ impl Widget for SecondScreenWidget {
             .constraints([
                 Constraint::Length(6),
                 Constraint::Min(11),
-                Constraint::Length(4),
+                Constraint::Length(5),
             ])
             .split(content);
 
@@ -67,7 +77,7 @@ impl Widget for SecondScreenWidget {
                 ))
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .border_style(Style::new().fg(BORDER_DIM))
+                .border_style(Style::new().fg(BORDER_ACCENT))
                 .style(Style::new().bg(BG_HERO)),
         )
         .wrap(Wrap { trim: true });
@@ -83,7 +93,21 @@ impl Widget for SecondScreenWidget {
             ])
             .split(sections[1]);
 
-        // Timeline-style experience entries
+        self.render_experience(main_split[0], buf);
+        self.render_projects(main_split[2], buf);
+
+        render_footer(
+            sections[2],
+            buf,
+            self.page,
+            self.total,
+            "Email karneeshkar01@gmail.com for resume and collaborations.",
+        );
+    }
+}
+
+impl SecondScreenWidget {
+    fn render_experience(&self, area: Rect, buf: &mut Buffer) {
         let experience_data: Vec<(&str, &str, &str, &str, &str, Color)> = vec![
             (
                 "2Cents Capital",
@@ -144,16 +168,30 @@ impl Widget for SecondScreenWidget {
         ];
 
         let entry_count = experience_data.len();
+
+        // Staggered reveal: each entry appears 2 ticks apart
+        let visible = ((self.screen_tick / 2) as usize).min(entry_count);
+
         let mut exp_lines: Vec<Line> = Vec::new();
 
-        for (i, (company, role, date, desc1, desc2, accent)) in experience_data.iter().enumerate() {
+        for (i, (company, role, date, desc1, desc2, accent)) in
+            experience_data[..visible].iter().enumerate()
+        {
             let is_last = i == entry_count - 1;
-            let marker = if is_last { "◆──" } else { "●──" };
-            let cont = if is_last { "   " } else { "│  " };
+            // Thick timeline connectors
+            let marker = if is_last { "┗━━" } else { "┣━━" };
+            let cont = if is_last { "    " } else { "┃   " };
+
+            // Current role gets pulsing accent
+            let timeline_color = if i == 0 {
+                pulsing_accent(*accent, self.global_tick, 8)
+            } else {
+                *accent
+            };
 
             // Company + role line
             exp_lines.push(Line::from(vec![
-                Span::styled(marker, Style::new().fg(*accent)),
+                Span::styled(marker, Style::new().fg(timeline_color)),
                 Span::styled(format!(" {}", company), Style::new().fg(*accent).bold()),
                 Span::styled(format!(" · {}", role), Style::new().fg(FG_PRIMARY).bold()),
             ]));
@@ -171,11 +209,18 @@ impl Widget for SecondScreenWidget {
                 Span::styled(cont, Style::new().fg(FG_DIM)),
                 Span::styled(format!(" {}", desc2), Style::new().fg(FG_SECONDARY)),
             ]));
-            // Blank separator line between entries
-            if !is_last {
-                exp_lines.push(Line::from(Span::styled("│", Style::new().fg(FG_DIM))));
+            // Separator between entries
+            if !is_last && i < visible.saturating_sub(1) {
+                exp_lines.push(Line::from(Span::styled("┃", Style::new().fg(FG_DIM))));
             }
         }
+
+        // Pulsing border for the experience panel to draw attention
+        let panel_border = if self.screen_tick < 20 {
+            pulsing_accent(BORDER_ACCENT, self.global_tick, 12)
+        } else {
+            BORDER_DIM
+        };
 
         let experience = Paragraph::new(exp_lines)
             .block(
@@ -186,12 +231,15 @@ impl Widget for SecondScreenWidget {
                     ))
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
-                    .border_style(Style::new().fg(BORDER_DIM))
+                    .border_style(Style::new().fg(panel_border))
+                    .padding(Padding::new(1, 1, 0, 0))
                     .style(Style::new().bg(BG_PANEL)),
             )
             .wrap(Wrap { trim: true });
-        experience.render(main_split[0], buf);
+        experience.render(area, buf);
+    }
 
+    fn render_projects(&self, area: Rect, buf: &mut Buffer) {
         let right_column = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -199,9 +247,8 @@ impl Widget for SecondScreenWidget {
                 Constraint::Length(1), // spacer
                 Constraint::Percentage(22),
             ])
-            .split(main_split[2]);
+            .split(area);
 
-        // Project cards with separators
         let project_data: Vec<(&str, &str, &str, &str, Color)> = vec![
             (
                 "Fine-Tuning LLaMA 3.1 8B for Code Reasoning",
@@ -255,7 +302,11 @@ impl Widget for SecondScreenWidget {
                 Span::styled(*stack, Style::new().fg(FG_MUTED).italic()),
             ]));
             if i < proj_count - 1 {
-                proj_lines.push(Line::from(Span::styled("───", Style::new().fg(FG_DIM))));
+                // Dotted separator pattern
+                proj_lines.push(Line::from(Span::styled(
+                    "─ · ─ · ─ · ─",
+                    Style::new().fg(FG_DIM),
+                )));
             }
         }
 
@@ -269,6 +320,7 @@ impl Widget for SecondScreenWidget {
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
                     .border_style(Style::new().fg(BORDER_DIM))
+                    .padding(Padding::new(1, 1, 0, 0))
                     .style(Style::new().bg(BG_PANEL)),
             )
             .wrap(Wrap { trim: true });
@@ -297,13 +349,5 @@ impl Widget for SecondScreenWidget {
         )
         .wrap(Wrap { trim: true });
         contact.render(right_column[2], buf);
-
-        render_footer(
-            sections[2],
-            buf,
-            self.page,
-            self.total,
-            "Email karneeshkar01@gmail.com for resume and collaborations.",
-        );
     }
 }

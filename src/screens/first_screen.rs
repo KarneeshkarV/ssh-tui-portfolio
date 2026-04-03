@@ -3,7 +3,7 @@ use ratatui::{
     prelude::*,
     style::Stylize,
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, Padding, Paragraph, Wrap},
 };
 
 use super::theme::*;
@@ -12,19 +12,24 @@ pub struct FirstScreenWidget {
     call_sign: String,
     page: usize,
     total: usize,
+    screen_tick: u64,
 }
 
-pub fn first_screen(call_sign: &str, page: usize, total: usize) -> FirstScreenWidget {
+pub fn first_screen(
+    call_sign: &str,
+    page: usize,
+    total: usize,
+    screen_tick: u64,
+) -> FirstScreenWidget {
     FirstScreenWidget {
         call_sign: call_sign.to_string(),
         page,
         total,
+        screen_tick,
     }
 }
 
-/// Render a single skill gauge line directly into the buffer.
-/// Label line: `◆ name ····· pct%`
-/// Bar line:   `━━━━━━━━━━━───────` (filled + unfilled)
+/// Render a single skill gauge line directly into the buffer with gradient fill.
 fn render_skill_gauge(
     buf: &mut Buffer,
     area: Rect,
@@ -32,6 +37,7 @@ fn render_skill_gauge(
     pct: u16,
     accent: Color,
     y_offset: u16,
+    screen_tick: u64,
 ) {
     if area.y + y_offset + 1 >= area.y + area.height {
         return;
@@ -46,8 +52,15 @@ fn render_skill_gauge(
         return;
     }
 
+    // Animate fill from 0% to target over 15 ticks
+    let animated_pct = if screen_tick < 15 {
+        (pct as u64 * screen_tick / 15) as u16
+    } else {
+        pct
+    };
+
     // Label line: ◆ name ····· pct%
-    let pct_str = format!("{}%", pct);
+    let pct_str = format!("{}%", animated_pct);
     let prefix = format!("◆ {} ", name);
     let dots_len = inner_w as usize - prefix.len() - pct_str.len();
 
@@ -74,16 +87,23 @@ fn render_skill_gauge(
         }
     }
 
-    // Bar line: filled ━ + unfilled ─
+    // Bar line: filled ━ with gradient + unfilled ─
     let bar_w = inner_w as usize;
-    let filled = (bar_w * pct as usize) / 100;
+    let filled = (bar_w * animated_pct as usize) / 100;
     let unfilled = bar_w - filled;
 
     x = inner_x;
-    for _ in 0..filled {
+    for i in 0..filled {
         if x < area.x + area.width {
+            // Gradient: dim → accent across the bar
+            let progress = if filled > 1 {
+                i as f64 / (filled - 1) as f64
+            } else {
+                1.0
+            };
+            let grad_color = color_lerp(FG_DIM, accent, progress);
             buf[(x, bar_y)].set_char('━');
-            buf[(x, bar_y)].set_style(Style::new().fg(accent));
+            buf[(x, bar_y)].set_style(Style::new().fg(grad_color));
             x += 1;
         }
     }
@@ -114,7 +134,7 @@ impl Widget for FirstScreenWidget {
             .constraints([
                 Constraint::Length(7),
                 Constraint::Min(11),
-                Constraint::Length(4),
+                Constraint::Length(5),
             ])
             .split(content);
 
@@ -144,7 +164,7 @@ impl Widget for FirstScreenWidget {
                 ))
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .border_style(Style::new().fg(BORDER_DIM))
+                .border_style(Style::new().fg(BORDER_ACCENT))
                 .style(Style::new().bg(BG_HERO)),
         )
         .wrap(Wrap { trim: true });
@@ -160,6 +180,28 @@ impl Widget for FirstScreenWidget {
             ])
             .split(sections[1]);
 
+        // Left column (stagger: appears at tick 2)
+        if self.screen_tick >= 2 {
+            self.render_left_column(columns[0], buf);
+        }
+
+        // Right column (stagger: appears at tick 6)
+        if self.screen_tick >= 6 {
+            self.render_right_column(columns[2], buf);
+        }
+
+        render_footer(
+            sections[2],
+            buf,
+            self.page,
+            self.total,
+            "n for experience & projects",
+        );
+    }
+}
+
+impl FirstScreenWidget {
+    fn render_left_column(&self, area: Rect, buf: &mut Buffer) {
         let left_layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -167,9 +209,9 @@ impl Widget for FirstScreenWidget {
                 Constraint::Length(1), // spacer
                 Constraint::Percentage(42),
             ])
-            .split(columns[0]);
+            .split(area);
 
-        // Tree-style expertise items
+        // Expertise items with styled dividers
         let expertise_data = [
             (
                 "Backend Development",
@@ -193,7 +235,7 @@ impl Widget for FirstScreenWidget {
                 "Frontend Development",
                 "React · JavaScript · Responsive UI · UX Design",
                 ACCENT_GOLD,
-                true, // last item
+                true,
             ),
         ];
 
@@ -221,6 +263,7 @@ impl Widget for FirstScreenWidget {
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
                     .border_style(Style::new().fg(BORDER_DIM))
+                    .padding(Padding::new(1, 1, 0, 0))
                     .style(Style::new().bg(BG_PANEL)),
             )
             .wrap(Wrap { trim: true });
@@ -245,11 +288,14 @@ impl Widget for FirstScreenWidget {
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(Style::new().fg(BORDER_DIM))
+                .padding(Padding::new(1, 1, 0, 0))
                 .style(Style::new().bg(BG_PANEL)),
         )
         .wrap(Wrap { trim: true });
         about.render(left_layout[2], buf);
+    }
 
+    fn render_right_column(&self, area: Rect, buf: &mut Buffer) {
         let right_layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -257,9 +303,9 @@ impl Widget for FirstScreenWidget {
                 Constraint::Length(1), // spacer
                 Constraint::Percentage(45),
             ])
-            .split(columns[2]);
+            .split(area);
 
-        // Skill gauges rendered directly into the buffer
+        // Skill gauges with highlighted border
         let skills_block = Block::default()
             .title(Span::styled(
                 "── Technical Skills ──",
@@ -267,7 +313,7 @@ impl Widget for FirstScreenWidget {
             ))
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::new().fg(BORDER_DIM))
+            .border_style(Style::new().fg(BORDER_ACCENT))
             .style(Style::new().bg(BG_PANEL));
         let skills_area = right_layout[0];
         skills_block.render(skills_area, buf);
@@ -287,7 +333,15 @@ impl Widget for FirstScreenWidget {
         ];
 
         for (i, (name, pct, accent)) in skills.iter().enumerate() {
-            render_skill_gauge(buf, inner, name, *pct, *accent, (i as u16) * 2);
+            render_skill_gauge(
+                buf,
+                inner,
+                name,
+                *pct,
+                *accent,
+                (i as u16) * 2,
+                self.screen_tick,
+            );
         }
 
         let connect = Paragraph::new(vec![
@@ -320,17 +374,10 @@ impl Widget for FirstScreenWidget {
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(Style::new().fg(BORDER_DIM))
+                .padding(Padding::new(1, 1, 0, 0))
                 .style(Style::new().bg(BG_PANEL)),
         )
         .wrap(Wrap { trim: true });
         connect.render(right_layout[2], buf);
-
-        render_footer(
-            sections[2],
-            buf,
-            self.page,
-            self.total,
-            "n for experience & projects",
-        );
     }
 }
