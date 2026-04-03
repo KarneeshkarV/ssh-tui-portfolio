@@ -27,7 +27,7 @@ jobs:
         run: cargo build --release
 
       - name: Deploy and restart SSH-TUI service
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.DO_HOST }}
           username: ${{ secrets.DO_USERNAME }}
