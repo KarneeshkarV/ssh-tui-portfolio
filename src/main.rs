@@ -97,19 +97,28 @@ impl App {
             self.call_sign = PRIMARY_CALL_SIGN.to_string();
         }
 
+        let (page, total) = self.screen_index();
         let widget = match self.screen {
             State::Intro => ScreenWidget::Intro(screens::intro_screen::intro_screen(
                 ASCII_FRAMES[self.intro_frame_index],
+                page,
+                total,
             )),
-            State::First => {
-                ScreenWidget::First(screens::first_screen::first_screen(&self.call_sign))
-            }
-            State::Second => {
-                ScreenWidget::Second(screens::second_screen::second_screen(&self.call_sign))
-            }
-            State::Third => {
-                ScreenWidget::Third(screens::third_screen::third_screen_from(&self.spark_data))
-            }
+            State::First => ScreenWidget::First(screens::first_screen::first_screen(
+                &self.call_sign,
+                page,
+                total,
+            )),
+            State::Second => ScreenWidget::Second(screens::second_screen::second_screen(
+                &self.call_sign,
+                page,
+                total,
+            )),
+            State::Third => ScreenWidget::Third(screens::third_screen::third_screen_from(
+                &self.spark_data,
+                page,
+                total,
+            )),
         };
 
         frame.render_widget(widget, frame.area());
@@ -160,6 +169,16 @@ impl App {
             State::Third => State::Second,
         };
     }
+    fn screen_index(&self) -> (usize, usize) {
+        let page = match self.screen {
+            State::Intro => 1,
+            State::First => 2,
+            State::Second => 3,
+            State::Third => 4,
+        };
+        (page, 4)
+    }
+
     /// Set running to false to quit the application.
     fn quit(&mut self) {
         self.running = false;
